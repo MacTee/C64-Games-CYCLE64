@@ -1,0 +1,36 @@
+# Generated PRGs, assembler symbols, screenshots and emulator output.
+/build/
+/release/
+*.sym
+*.vs
+*.dbg
+*.log
+
+# Local design packages, playtest evidence, agent state and backups.
+/_docs/spoiler
+/_docs/drafts
+/_agents/
+/_backups/
+/CHANGELOG.md
+/TESTING.md
+/tools
+
+# Local editor and assistant settings.
+/.vs/
+/.vscode/
+/.idea/
+/.claude/
+/.codex/
+/.agents/
+
+# Temporary files and operating-system metadata.
+*.tmp
+*.temp
+*.bak
+*.swp
+*~
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Do not ignore *.bin: src/data/title/ contains required artwork assets.
