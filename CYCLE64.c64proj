@@ -1,0 +1,26 @@
+{
+  "Version": 1,
+  "Name": "CYCLE64",
+  "RootSource": "src/main.asm",
+  "OutputDirectory": "build/studio",
+  "LibraryDirectories": [],
+  "Defines": [],
+  "RunMode": "PrgEntry",
+  "EntrySymbol": "start",
+  "PreferredTargetId": "builtin",
+  "Profiles": [
+    {
+      "Name": "Debug",
+      "Debug": true,
+      "Defines": [],
+      "OutputSubdirectory": "debug"
+    },
+    {
+      "Name": "Release",
+      "Debug": false,
+      "Defines": [],
+      "OutputSubdirectory": "release"
+    }
+  ],
+  "ActiveProfileName": "Debug"
+}
