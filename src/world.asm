@@ -1,22 +1,30 @@
+// CYCLE 64 - Session initialization, physical resets, movement and cargo interactions.
+
 // No display dependencies. Reset never writes persistent session storage.
 session_init:
+{
     lda #0
     tax
-!clear:
-    .for (var p=0;p<5;p++) {
-        sta persistent_start+p*$100,x
+    !clear:
+    .for (var p = 0; p < 5; p++)
+    {
+        sta persistent_start+p*$100, x
     }
     inx
     bne !clear-
     lda #255
     ldx #MISSION_COUNT-1
-!best:
-    sta best_ticks,x
-    sta best_lines,x
+    !best:
+    sta best_ticks, x
+    sta best_lines, x
     dex
     bpl !best-
     rts
+}
+
+// Reset physical state and VM counters while preserving session knowledge.
 reset_ephemeral_world:
+{
     jsr reset_physical
     lda #0
     sta elapsed
@@ -33,8 +41,11 @@ reset_ephemeral_world:
     sta run_lines
     jsr reveal_normal
     rts
+}
+
 // Rebuilds the facility: live tiles, robots, cargo and the chip.
 reset_physical:
+{
     lda #<rooms_start
     sta data_ptr
     lda #>rooms_start
@@ -45,18 +56,18 @@ reset_physical:
     sta screen_ptr+1
     ldx #>(ROOM_COUNT*120)
     ldy #0
-!page:
-    lda (data_ptr),y
-    sta (screen_ptr),y
+    !page:
+    lda (data_ptr), y
+    sta (screen_ptr), y
     iny
     bne !page-
     inc data_ptr+1
     inc screen_ptr+1
     dex
     bne !page-
-!rest:
-    lda (data_ptr),y
-    sta (screen_ptr),y
+    !rest:
+    lda (data_ptr), y
+    sta (screen_ptr), y
     iny
     cpy #<(ROOM_COUNT*120)
     bne !rest-
@@ -82,32 +93,43 @@ reset_physical:
     sta ending_kind
     sta powered_mask
     ldx #CARGO_COUNT-1
-!cargo:
-    lda initial_cargo_room,x
-    sta cargo_room,x
-    lda initial_cargo_x,x
-    sta cargo_x,x
-    lda initial_cargo_y,x
-    sta cargo_y,x
+    !cargo:
+    lda initial_cargo_room, x
+    sta cargo_room, x
+    lda initial_cargo_x, x
+    sta cargo_x, x
+    lda initial_cargo_y, x
+    sta cargo_y, x
     dex
     bpl !cargo-
     rts
+}
+
 // A=direction N/E/S/W. Carry set means outside the room.
+// Input: A = direction 0..3. Returns: C = 1 outside room; otherwise target_* and data_ptr.
+// Clobbers: A/X/Y, flags and target scratch; no physical movement occurs here.
 adjacent_target:
+{
     tax
     lda robot_room
     sta target_room
     lda robot_x
     clc
-    adc delta_x,x
+    adc delta_x, x
     sta target_x
     lda robot_y
     clc
-    adc delta_y,x
+    adc delta_y, x
     sta target_y
     jmp target_lookup
+}
+
 // Reads the live tile at target_room/x/y. Leaves data_ptr on the live room.
+// Input: target_room is valid; target_x/y may be outside the 12x10 room.
+// Returns: C = 1 outside; otherwise A = target_tile, Y = tile index, data_ptr = room base.
+// Clobbers: X, A/Y and flags; writes target_index/target_tile on success.
 target_lookup:
+{
     lda target_x
     cmp #12
     bcs !bad+
@@ -115,27 +137,30 @@ target_lookup:
     cmp #10
     bcs !bad+
     tax
-    lda row12,x
+    lda row12, x
     clc
     adc target_x
     sta target_index
     tay
     ldx target_room
-    lda live_lo,x
+    lda live_lo, x
     sta data_ptr
-    lda live_hi,x
+    lda live_hi, x
     sta data_ptr+1
-    lda (data_ptr),y
+    lda (data_ptr), y
     sta target_tile
     clc
     rts
-!bad:
+    !bad:
     sec
     rts
+}
+
 // Carry set when the target tile or the parked robot blocks the way.
 target_passable:
+{
     ldx target_tile
-    lda tile_solid,x
+    lda tile_solid, x
     bne !blocked+
     lda target_room
     cmp other_room
@@ -146,52 +171,65 @@ target_passable:
     lda target_y
     cmp other_y
     beq !blocked+
-!ok:
+    !ok:
     clc
     rts
-!blocked:
+    !blocked:
     sec
     rts
+}
+
 // Return X=cargo ID, carry clear for loose cargo at target.
+// Input: target_room/x/y. Returns: C = 0 and X = cargo ID when found; C = 1 otherwise.
+// Clobbers: A/X and flags; preserves Y.
 find_cargo:
+{
     ldx #CARGO_COUNT-1
-!next:
-    lda cargo_room,x
+    !next:
+    lda cargo_room, x
     cmp target_room
     bne !skip+
-    lda cargo_x,x
+    lda cargo_x, x
     cmp target_x
     bne !skip+
-    lda cargo_y,x
+    lda cargo_y, x
     cmp target_y
     bne !skip+
     clc
     rts
-!skip:
+    !skip:
     dex
     bpl !next-
     sec
     rts
+}
+
 // Return X=device at target_room/target_index, carry clear when found.
+// Input: target_room/target_index. Returns: C = 0 and X = device ID when found.
+// Returns: C = 1 when absent. Clobbers: A/X and flags; preserves Y.
 find_device:
+{
     ldx #DEV_COUNT-1
-!next:
-    lda dev_room,x
+    !next:
+    lda dev_room, x
     cmp target_room
     bne !skip+
-    lda dev_index,x
+    lda dev_index, x
     cmp target_index
     beq !found+
-!skip:
+    !skip:
     dex
     bpl !next-
     sec
     rts
-!found:
+    !found:
     clc
     rts
+}
+
 // One tile in the direction of A. Used by MOVE and twice per cycle by BOOST.
 world_move_dir:
+{
     jsr adjacent_target
     bcs !wall+
     jsr target_passable
@@ -203,7 +241,7 @@ world_move_dir:
     bne !cargo+
     jsr resolve_exit
     bcs !wall+
-!cargo:
+    !cargo:
     jsr find_cargo
     bcc !wall+
     lda target_room
@@ -220,14 +258,18 @@ world_move_dir:
     clc
     adc #1
     jsr record_mission
-!reveal:
+    !reveal:
     jsr reveal_normal
     rts
-!wall:
+    !wall:
     lda #HALT_WALL
     sta action_error
     rts
+}
+
+// Resolve the matching room exit and move the robot to its destination.
 resolve_exit:
+{
     // The Junction south door blocks passage in both directions.
     lda target_room
     cmp #5
@@ -236,57 +278,60 @@ resolve_exit:
     cmp #6
     bne !searchStart+
     lda powered_mask
-    and #12
+    and #%00001100
     cmp #12
     beq !searchStart+
     sec
     rts
-!searchStart:
+    !searchStart:
     ldx #EXIT_COUNT-1
-!search:
-    lda exit_from_room,x
+    !search:
+    lda exit_from_room, x
     cmp target_room
     bne !next+
-    lda exit_from_index,x
+    lda exit_from_index, x
     cmp target_index
     bne !next+
-    lda exit_to_room,x
+    lda exit_to_room, x
     sta target_room
-    lda exit_to_x,x
+    lda exit_to_x, x
     sta target_x
-    lda exit_to_y,x
+    lda exit_to_y, x
     sta target_y
     jsr target_lookup
     jmp target_passable
-!next:
+    !next:
     dex
     bpl !search-
     sec
     rts
+}
+
 // Junction/Cooling use 4 ON / 4 OFF; Reactor uses 8 ON / 2 OFF.
 // A robot on an active laser tile halts. Called after every action.
 laser_check:
+{
     lda elapsed
     ldx robot_room
     ldy robot_y
     jsr laser_phase
     bcc !safe+
     ldx robot_room
-    lda live_lo,x
+    lda live_lo, x
     sta data_ptr
-    lda live_hi,x
+    lda live_hi, x
     sta data_ptr+1
     ldx robot_y
-    lda row12,x
+    lda row12, x
     clc
     adc robot_x
     tay
-    lda (data_ptr),y
+    lda (data_ptr), y
     cmp #TILE_LASER
     beq !hit+
     cmp #TILE_LASER_V
     bne !safe+
-!hit:
+    !hit:
     sta target_tile
     lda robot_room
     sta target_room
@@ -296,9 +341,13 @@ laser_check:
     sta target_y
     lda #HALT_LASER
     sta action_error
-!safe:
+    !safe:
     rts
+}
+
+// Pick up adjacent loose cargo or remove a cell from its socket.
 world_pick:
+{
     lda held
     cmp #255
     bne !holding+
@@ -309,18 +358,21 @@ world_pick:
     bcs !none+
     stx held
     lda #254
-    sta cargo_room,x
+    sta cargo_room, x
     jmp refresh_power
-!holding:
+    !holding:
     lda #HALT_HOLDING
     bne !error+
-!none:
+    !none:
     lda #HALT_NO_CARGO
-!error:
+    !error:
     sta action_error
     rts
+}
+
 // Loose cargo stays on empty floor; sockets keep their delivery behavior.
 world_drop:
+{
     lda held
     cmp #255
     beq !empty+
@@ -334,51 +386,54 @@ world_drop:
     cmp #CARGO_CHIP
     bne !blocked+
     jmp install_chip
-!floor:
+    !floor:
     lda target_tile
     beq !freeTile+
     cmp #TILE_SOCKET
     bne !blocked+
-!freeTile:
+    !freeTile:
     jsr target_passable
     bcs !blocked+
     jsr find_cargo
     bcc !blocked+
     ldx held
     lda target_room
-    sta cargo_room,x
+    sta cargo_room, x
     lda target_x
-    sta cargo_x,x
+    sta cargo_x, x
     lda target_y
-    sta cargo_y,x
+    sta cargo_y, x
     lda #255
     sta held
     jsr record_delivery
     rts
-!empty:
+    !empty:
     lda #HALT_EMPTY
     bne !error+
-!taken:
+    !taken:
     lda #HALT_TAKEN
     bne !error+
-!blocked:
+    !blocked:
     // Keep cargo in hand when the destination is unsuitable or occupied.
     lda #HALT_BLOCKED
-!error:
+    !error:
     sta action_error
     rts
+}
+
 // LINK: the uplink in the direction of active_dir moves the single control
 // channel to the parked robot. Only one LINK per loop.
 world_link:
+{
     lda active_dir
     jsr adjacent_target
     bcs !none+
     jsr find_device
     bcs !none+
-    lda dev_kind,x
+    lda dev_kind, x
     cmp #KIND_LINK
     bne !none+
-    lda dev_power,x
+    lda dev_power, x
     and powered_mask
     beq !offline+
     lda linked
@@ -386,35 +441,44 @@ world_link:
     inc linked
     // robot_room/x/y/held and other_room/x/y/held are two 4-byte records.
     ldx #3
-!swap:
-    lda robot_room,x
-    ldy other_room,x
-    sta other_room,x
+    !swap:
+    lda robot_room, x
+    ldy other_room, x
+    sta other_room, x
     tya
-    sta robot_room,x
+    sta robot_room, x
     dex
     bpl !swap-
     lda #EV_LINK
     jsr raise_event
     jmp reveal_normal
-!none:
+    !none:
     lda #HALT_NO_UPLINK
     bne !error+
-!busy:
+    !busy:
     lda #HALT_CHANNEL
     bne !error+
-!offline:
+    !offline:
     lda #HALT_OFFLINE
-!error:
+    !error:
     sta action_error
     rts
+}
+
 // A=event. The footer shows each new event once.
 raise_event:
+{
     sta knowledge_event
     inc event_seq
     rts
-delta_x: .byte 0,1,0,255
-delta_y: .byte 255,0,1,0
+}
+
+delta_x:
+    .byte 0, 1, 0, 255
+delta_y:
+    .byte 255, 0, 1, 0
 // Per tile: blocks movement, and blocks sight.
-tile_solid: .byte 0,1,0,0,1,1,0,1,1,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,0,0,0,0
-tile_opaque: .byte 0,1,0,0,0,1,0,0,1,0,0,0,0,0,0,0,0,0,0,0,1,1,1,0,0,0,0,0
+tile_solid:
+    .byte 0, 1, 0, 0, 1, 1, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0
+tile_opaque:
+    .byte 0, 1, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0

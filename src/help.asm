@@ -1,33 +1,42 @@
+// CYCLE 64 - Help-page navigation, control highlighting and the editor preview.
+
 // Help-only rendering uses the spare space after the second story block.
 navigate_help:
+{
     ldx #2
-!find:
-    lda help_order,x
+    !find:
+    lda help_order, x
     cmp help_open
     beq !found+
     dex
     bpl !find-
     clc
     rts
-!found:
+    !found:
     lda key
     cmp #29
     bne !left+
-    lda help_next,x
+    lda help_next, x
     bne !store+
-!left:
-    lda help_prev,x
-!store:
+    !left:
+    lda help_prev, x
+    !store:
     sta help_open
     sec
     rts
-help_order: .byte PAGE_EDITOR,PAGE_HELP,PAGE_LEGEND
-help_next: .byte PAGE_HELP,PAGE_LEGEND,PAGE_EDITOR
-help_prev: .byte PAGE_LEGEND,PAGE_EDITOR,PAGE_HELP
+}
+
+help_order:
+    .byte PAGE_EDITOR, PAGE_HELP, PAGE_LEGEND
+help_next:
+    .byte PAGE_HELP, PAGE_LEGEND, PAGE_EDITOR
+help_prev:
+    .byte PAGE_LEGEND, PAGE_EDITOR, PAGE_HELP
 
 // Honor the help page's control bar. Briefings and ending pages keep their
 // own input rules. Resuming a running program must not start a fresh loop.
 help_shortcuts:
+{
     lda help_open
     cmp #PAGE_EDITOR
     beq !help+
@@ -35,7 +44,7 @@ help_shortcuts:
     beq !help+
     cmp #PAGE_LEGEND
     bne !ignore+
-!help:
+    !help:
     lda key
     cmp #86
     beq !route+
@@ -45,7 +54,7 @@ help_shortcuts:
     beq !route+
     cmp #136
     bne !ignore+
-!route:
+    !route:
     lda #0
     sta help_open
     sta intro
@@ -55,91 +64,96 @@ help_shortcuts:
     lda mode
     cmp #MODE_RUN
     beq !done+
-!dispatch:
+    !dispatch:
     lda key
     jsr handle_key
-!done:
+    !done:
     lda #DIRTY_ALL
     sta key_dirty
     sec
     rts
-!ignore:
+    !ignore:
     clc
     rts
+}
 
 // X=row. Complete F-key tokens and standalone H/V get yellow ink.
 highlight_control_row:
+{
     jsr screen_position
     ldy #1
-!char:
-    lda (screen_ptr),y
+    !char:
+    lda (screen_ptr), y
     cmp #6
     bne !help+
     cpy #39
     beq !next+
     iny
-    lda (screen_ptr),y
+    lda (screen_ptr), y
     cmp #49
     bcc !notKey+
     cmp #58
     bcs !notKey+
     lda #7
-    sta (color_ptr),y
+    sta (color_ptr), y
     dey
-    sta (color_ptr),y
+    sta (color_ptr), y
     iny
     bne !next+
-!notKey:
+    !notKey:
     dey
     jmp !next+
-!help:
+    !help:
     cmp #8
     beq !letter+
     cmp #22
     bne !next+
-!letter:
+    !letter:
     cpy #39
     beq !previous+
     iny
-    lda (screen_ptr),y
+    lda (screen_ptr), y
     cmp #32
     beq !afterHelp+
     dey
     jmp !next+
-!afterHelp:
+    !afterHelp:
     dey
-!previous:
+    !previous:
     dey
-    lda (screen_ptr),y
+    lda (screen_ptr), y
     cmp #32
     beq !keyHelp+
     iny
     jmp !next+
-!keyHelp:
+    !keyHelp:
     iny
     lda #7
-    sta (color_ptr),y
-!next:
+    sta (color_ptr), y
+    !next:
     iny
     cpy #40
     bne !char-
     rts
+}
 
+// Draw the editor help page and its independent ten-row program preview.
 draw_editor_help:
-    :TextAt(4,3,eh_up,15)
-    :TextAt(6,3,eh_key1,15)
-    :TextAt(7,3,eh_key2,15)
-    :TextAt(9,3,eh_param1,15)
-    :TextAt(10,3,eh_param2,15)
-    :TextAt(12,3,eh_insert,15)
-    :TextAt(14,3,eh_delete,15)
-    :TextAt(16,3,eh_next,15)
-    :TextAt(19,3,eh_logs,15)
-    :TextAt(21,2,hc_play,12)
+{
+    :TextAt(4, 3, eh_up, 15)
+    :TextAt(6, 3, eh_key1, 15)
+    :TextAt(7, 3, eh_key2, 15)
+    :TextAt(9, 3, eh_param1, 15)
+    :TextAt(10, 3, eh_param2, 15)
+    :TextAt(12, 3, eh_insert, 15)
+    :TextAt(14, 3, eh_delete, 15)
+    :TextAt(16, 3, eh_next, 15)
+    :TextAt(19, 3, eh_logs, 15)
+    :TextAt(21, 2, hc_play, 12)
     ldx #21
     jsr highlight_control_row
-    :TextAt(4,25,editor_text,3)
-    :TextAt(5,25,program_text,12)
+    :TextAt(4, 25, editor_text, 3)
+    :TextAt(5, 25, program_text, 12)
     lda program_len
     ldx #5
     ldy #33
@@ -157,10 +171,10 @@ draw_editor_help:
     sec
     sbc #9
     sta scratch+19
-!preview:
+    !preview:
     lda #0
     sta panel_line
-!line:
+    !line:
     lda panel_line
     clc
     adc scratch+19
@@ -185,9 +199,9 @@ draw_editor_help:
     sta fmt_sub
     jsr buf_instr
     jmp !print+
-!empty:
+    !empty:
     :Append(rc_0)
-!print:
+    !print:
     lda #38
     sta field_end
     ldx render_row
@@ -200,16 +214,16 @@ draw_editor_help:
     ldx render_row
     jsr screen_position
     ldy #25
-!highlight:
-    lda (screen_ptr),y
-    ora #$80
-    sta (screen_ptr),y
+    !highlight:
+    lda (screen_ptr), y
+    ora #%10000000
+    sta (screen_ptr), y
     lda #7
-    sta (color_ptr),y
+    sta (color_ptr), y
     iny
     cpy #38
     bne !highlight-
-!next:
+    !next:
     inc panel_line
     lda panel_line
     cmp #10
@@ -217,12 +231,13 @@ draw_editor_help:
     ldx #16
     jsr screen_position
     ldy #25
-!rule:
+    !rule:
     lda #CHAR_HLINE
-    sta (screen_ptr),y
+    sta (screen_ptr), y
     lda #12
-    sta (color_ptr),y
+    sta (color_ptr), y
     iny
     cpy #38
     bne !rule-
     rts
+}

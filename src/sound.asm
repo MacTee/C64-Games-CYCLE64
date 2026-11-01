@@ -1,4 +1,8 @@
+// CYCLE 64 - SID sound effects and frame updates; the VM never accesses SID or VIC.
+
+// Start the reset sound and its border-color cue on SID voice 1.
 sound_rewind:
+{
     lda #12
     sta sound_timer
     lda #1
@@ -12,7 +16,11 @@ sound_rewind:
     lda #$21
     sta $d404
     rts
+}
+
+// Advance the sound effect and return voice 1 to music when it finishes.
 sound_frame:
+{
     lda sound_timer
     beq !music+
     lda sound_kind
@@ -20,9 +28,9 @@ sound_frame:
     lda sound_timer
     asl
     sta $d401
-    and #7
+    and #%00000111
     sta $d020
-!timer:
+    !timer:
     dec sound_timer
     bne !music+
     lda #0
@@ -32,11 +40,13 @@ sound_frame:
     lda music_enabled
     beq !music+
     jsr music_restore_bass
-!music:
+    !music:
     jmp music_frame
+}
 
 // Presentation consumes engine events; engine never touches SID or VIC.
 sound_action:
+{
     lda halt_reason
     cmp #HALT_CLOCK
     beq !done+
@@ -61,24 +71,24 @@ sound_action:
     beq !move+
     cmp #4
     bcs !done+
-!move:
+    !move:
     lda #8
     bne !play+
-!error:
+    !error:
     lda #3
     bne !play+
-!delivery:
+    !delivery:
     lda #48
     bne !play+
-!pick:
+    !pick:
     lda #24
     bne !play+
-!scan:
+    !scan:
     lda #16
     bne !play+
-!read:
+    !read:
     lda #36
-!play:
+    !play:
     tax
     lda #5
     sta sound_timer
@@ -96,12 +106,14 @@ sound_action:
     sta $d404
     lda #15
     sta $d418
-!done:
+    !done:
     rts
+}
 
 // Ending cues. The good ending is a long high tone. The bad ending is noise
 // with the border flicker of the reset cue: the console loses the link.
 sound_ending:
+{
     lda #60
     sta sound_timer
     lda #15
@@ -123,7 +135,7 @@ sound_ending:
     lda #$11
     sta $d404
     rts
-!lost:
+    !lost:
     lda #1
     sta sound_kind
     lda #$00
@@ -135,3 +147,4 @@ sound_ending:
     lda #$81
     sta $d404
     rts
+}

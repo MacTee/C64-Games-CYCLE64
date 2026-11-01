@@ -1,11 +1,15 @@
+// CYCLE 64 - PAL IRQ-driven Mix v5 music with SID voice 1 shared by sound effects.
+
 // Mix v5, adapted from the supplied standalone player. PAL raster IRQ owns
 // the clock; voice 1 belongs to effects while sound_timer is nonzero.
 music_start:
+// Initialize Mix v5 clocks, voices and shared sound state.
 music_init:
+{
     lda #0
     ldx #7
-!clear:
-    sta music_state,x
+    !clear:
+    sta music_state, x
     dex
     bpl !clear-
     sta $d417
@@ -14,16 +18,20 @@ music_init:
     sta music_note_clock
     sta music_arp_clock
     ldx #13
-!setup:
-    lda music_setup,x
-    sta $d407,x
+    !setup:
+    lda music_setup, x
+    sta $d407, x
     dex
     bpl !setup-
     lda #15
     sta $d418
     rts
+}
 
+// Toggle music atomically while leaving an active sound effect enabled.
+// Preserves the caller's processor status with PHP/PLP; A/X and music state may change.
 music_toggle:
+{
     php
     sei
     lda music_enabled
@@ -37,19 +45,25 @@ music_toggle:
     lda #0
     sta $d404
     beq !done+
-!on:
+    !on:
     jsr music_init
-!done:
+    !done:
     plp
     rts
+}
 
+// Acknowledge the game raster IRQ, update audio and chain to KERNAL.
 music_irq:
+{
     lda #1
     sta $d019
     jsr sound_frame
     jmp $ea31
+}
 
+// Advance music clocks once per PAL frame while music is enabled.
 music_frame:
+{
     lda music_enabled
     beq !done+
     lda music_drum_ticks
@@ -57,25 +71,28 @@ music_frame:
     dec music_drum_ticks
     bne !step+
     jsr music_restore_bass
-!step:
+    !step:
     dec music_note_clock
     bne !arp+
     lda #15
     sta music_note_clock
     jsr music_new_step
-!arp:
+    !arp:
     dec music_arp_clock
     bne !done+
     lda #5
     sta music_arp_clock
     jsr music_new_arp
-!done:
+    !done:
     rts
+}
 
+// Play the next melody/bass step and schedule its drum accent.
 music_new_step:
+{
     ldx music_step
     stx music_active_step
-    lda music_lead,x
+    lda music_lead, x
     cmp #254
     beq !bass+
     tax
@@ -83,39 +100,42 @@ music_new_step:
     sta $d40b
     cpx #0
     beq !bass+
-    lda music_freq_lo,x
+    lda music_freq_lo, x
     sta $d407
-    lda music_freq_hi,x
+    lda music_freq_hi, x
     sta $d408
     lda #$41
     sta $d40b
-!bass:
+    !bass:
     lda music_active_step
     lsr
     bcs !drums+
     tax
-    lda music_bass,x
+    lda music_bass, x
     sta music_bass_note
     jsr music_restore_bass
-!drums:
+    !drums:
     lda music_active_step
-    and #7
+    and #%00000111
     cmp #4
     beq !hit+
     lda music_active_step
-    and #31
+    and #%00011111
     cmp #30
     bne !next+
-!hit:
+    !hit:
     jsr music_trigger_drum
-!next:
+    !next:
     inc music_step
     lda music_step
-    and #63
+    and #%00111111
     sta music_step
     rts
+}
 
+// Trigger a drum accent only when SID voice 1 is free of sound effects.
 music_trigger_drum:
+{
     lda sound_timer
     bne !done+
     lda #3
@@ -132,10 +152,13 @@ music_trigger_drum:
     sta $d401
     lda #$81
     sta $d404
-!done:
+    !done:
     rts
+}
 
+// Restore the current bass note after a drum or sound effect releases voice 1.
 music_restore_bass:
+{
     lda sound_timer
     bne !done+
     lda #0
@@ -149,21 +172,24 @@ music_restore_bass:
     lda #$a5
     sta $d406
     ldx music_bass_note
-    lda music_freq_lo,x
+    lda music_freq_lo, x
     sta $d400
-    lda music_freq_hi,x
+    lda music_freq_hi, x
     sta $d401
     lda #$11
     sta $d404
-!done:
+    !done:
     rts
+}
 
+// Play the next note in the current three-note arpeggio.
 music_new_arp:
+{
     lda music_active_step
     lsr
     lsr
     lsr
-    and #3
+    and #%00000011
     sta music_chord
     asl
     clc
@@ -171,11 +197,11 @@ music_new_arp:
     clc
     adc music_arp_part
     tax
-    lda music_arp,x
+    lda music_arp, x
     tax
-    lda music_freq_lo,x
+    lda music_freq_lo, x
     sta $d40e
-    lda music_freq_hi,x
+    lda music_freq_hi, x
     sta $d40f
     inc music_arp_part
     lda music_arp_part
@@ -183,21 +209,31 @@ music_new_arp:
     bcc !done+
     lda #0
     sta music_arp_part
-!done:
+    !done:
     rts
+}
 
 music_setup:
-    .byte 0,0,0,8,$40,$22,$84,0,0,0,6,$41,$12,$84
+    .byte 0, 0, 0, 8, $40, $22, $84, 0, 0, 0, 6, $41, $12, $84
 music_state:
-music_note_clock: .byte 0
-music_arp_clock: .byte 0
-music_step: .byte 0
-music_active_step: .byte 0
-music_arp_part: .byte 0
-music_chord: .byte 0
-music_drum_ticks: .byte 0
-music_bass_note: .byte 0
-music_enabled: .byte 0
+music_note_clock:
+    .byte 0
+music_arp_clock:
+    .byte 0
+music_step:
+    .byte 0
+music_active_step:
+    .byte 0
+music_arp_part:
+    .byte 0
+music_chord:
+    .byte 0
+music_drum_ticks:
+    .byte 0
+music_bass_note:
+    .byte 0
+music_enabled:
+    .byte 0
 
 #import "data/music-v5.asm"
 music_end:

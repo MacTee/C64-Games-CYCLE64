@@ -1,40 +1,50 @@
+// CYCLE 64 - Keyboard dispatch, robot program editing and modal-page navigation.
+
 // The starting program only explores: one step south, a SCAN that shows the
 // first cell, one step east to stand next to it. The program-end pause
 // invites the next lines (PICK E).
-.const DEMO_LINES=3
+.const DEMO_LINES                  = 3
+// Install the three-line starting program and reset its editor cursor.
 editor_init:
+{
     lda #DEMO_LINES
     sta program_len
     ldx #DEMO_LINES-1
-!copy:
-    lda demo_op,x
-    sta program_op,x
-    lda demo_arg,x
-    sta program_arg,x
+    !copy:
+    lda demo_op, x
+    sta program_op, x
+    lda demo_arg, x
+    sta program_arg, x
     lda #OP_E
-    sta program_dir,x
+    sta program_dir, x
     dex
     bpl !copy-
     lda #0
     sta cursor
     sta scroll_top
     rts
-demo_op: .byte OP_S,OP_SCAN,OP_E
-demo_arg: .byte 1,1,1
+}
 
+demo_op:
+    .byte OP_S, OP_SCAN, OP_E
+demo_arg:
+    .byte 1, 1, 1
+
+// Dispatch A = PETSCII key according to the active game mode or page.
 handle_key:
+{
     // C64 shifted letters produce $c1..$da; accept them too.
     cmp #$c1
     bcc !case+
     cmp #$db
     bcs !case+
-    and #$7f
-!case:
+    and #%01111111
+    !case:
     sta key
-    cmp #135 // F5: global music toggle; effects remain enabled.
+    cmp #135                                                // F5: global music toggle; effects remain enabled.
     bne !mode+
     jmp music_toggle
-!mode:
+    !mode:
     lda mode
     cmp #MODE_TITLE
     bne !normal+
@@ -55,9 +65,9 @@ handle_key:
     sta help_open
     lda #1
     sta intro
-!titleReturn:
+    !titleReturn:
     rts
-!normal:
+    !normal:
     lda help_open
     beq !game+
     // SPACE confirms text pages; in the game it steps one cycle.
@@ -66,20 +76,20 @@ handle_key:
     bne !page+
     lda #13
     sta key
-!page:
+    !page:
     jmp page_key
-!game:
+    !game:
     lda key
-!help:
-    cmp #72 // H
+    !help:
+    cmp #72                                                 // H
     bne !logs+
     lda #DIRTY_ALL
     sta key_dirty
     lda #PAGE_EDITOR
     sta help_open
     rts
-!logs:
-    cmp #86 // V: console records, at any time like help
+    !logs:
+    cmp #86                                                 // V: console records, at any time like help
     bne !image+
     lda #DIRTY_ALL
     sta key_dirty
@@ -88,7 +98,7 @@ handle_key:
     lda #PAGE_RECORD
     sta help_open
     rts
-!image:
+    !image:
     // K: the reactor control image, in PLAN after the reactor service record.
     cmp #75
     bne !global+
@@ -104,7 +114,7 @@ handle_key:
     lda #PAGE_IMAGE
     sta help_open
     rts
-!global:
+    !global:
     // M while a program runs or pauses: the map needs PLAN. Say so.
     lda key
     cmp #77
@@ -118,61 +128,61 @@ handle_key:
     lda #DIRTY_FOOTER
     sta key_dirty
     rts
-!f7:
+    !f7:
     lda key
-    cmp #136 // F7: abort and reset
+    cmp #136                                                // F7: abort and reset
     bne !run+
     jmp reset_loop
-!run:
-    cmp #133 // F1
+    !run:
+    cmp #133                                                // F1
     bne !step+
     jsr can_retry_halt
     beq !runMode+
     jsr prepare_error_edit
-!runMode:
+    !runMode:
     lda mode
     cmp #MODE_STEP
     beq !resume+
     jsr begin_run
-!resume:
+    !resume:
     jsr continue_end
     lda #MODE_RUN
     sta mode
     lda #0
     sta frame_count
     rts
-!step:
-    cmp #134 // F3 / SPACE: one logical cycle
+    !step:
+    cmp #134                                                // F3 / SPACE: one logical cycle
     beq !doStep+
     cmp #32
     bne !editGate+
-!doStep:
+    !doStep:
     jsr can_retry_halt
     beq !stepMode+
     jsr prepare_error_edit
-!stepMode:
+    !stepMode:
     lda mode
     cmp #MODE_PLAN
     beq !freshStep+
     cmp #MODE_HALT
     bne !oneStep+
-!freshStep:
+    !freshStep:
     jsr begin_run
-!oneStep:
+    !oneStep:
     jsr continue_end
     lda #MODE_STEP
     sta mode
     jsr vm_tick
     jsr after_tick
     rts
-!editGate:
+    !editGate:
     lda mode
     beq !edit+
     jsr end_pause
     beq !halted+
-!edit:
+    !edit:
     jmp editor_key
-!halted:
+    !halted:
     lda mode
     cmp #MODE_HALT
     bne !done+
@@ -186,16 +196,18 @@ handle_key:
     lda #DIRTY_PARTS
     sta key_dirty
     rts
-!finished:
+    !finished:
     lda key
     cmp #13
     bne !done+
     jmp reset_loop
-!done:
+    !done:
     rts
+}
 
 // A failed action pauses the program while the physical loop still has time.
 can_retry_halt:
+{
     lda mode
     cmp #MODE_HALT
     bne !no+
@@ -203,13 +215,16 @@ can_retry_halt:
     cmp #64
     bcs !no+
     ldx halt_reason
-    lda halt_is_failure,x
+    lda halt_is_failure, x
     rts
-!no:
+    !no:
     lda #0
     rts
+}
 
+// Pause at the failed command so the player can edit it and retry.
 prepare_error_edit:
+{
     lda #0
     sta cycles_left
     sta substep
@@ -223,11 +238,13 @@ prepare_error_edit:
     lda #DIRTY_PARTS
     sta key_dirty
     jmp editor_scroll
+}
 
 // Ends the loop: the facility resets, and the editor shows the start state.
 // RETURN after a final halt and F7 at any time. Records not viewed yet
 // open in the viewer, the first one first.
 reset_loop:
+{
     // After a failed line, the editor cursor goes to that line.
     jsr run_failed
     beq !world+
@@ -235,7 +252,7 @@ reset_loop:
     cmp program_len
     bcs !world+
     sta cursor
-!world:
+    !world:
     jsr reset_ephemeral_world
     jsr sound_rewind
     lda #MODE_PLAN
@@ -249,50 +266,62 @@ reset_loop:
     sta help_open
     lda #DIRTY_ALL
     sta key_dirty
-!scroll:
+    !scroll:
     jmp editor_scroll
+}
+
 // Command reacts after each cycle: a transmission is stored (not viewed yet)
 // when both of its conditions are met. A condition is a byte AND mask != 0.
 check_transmissions:
+{
     ldx #RECORD_COUNT-FIRST_TRANSMISSION
-!next:
-    lda trans_a_lo,x
+    !next:
+    lda trans_a_lo, x
     sta data_ptr
-    lda trans_a_hi,x
+    lda trans_a_hi, x
     sta data_ptr+1
     ldy #0
-    lda (data_ptr),y
-    and trans_a_mask,x
+    lda (data_ptr), y
+    and trans_a_mask, x
     beq !skip+
-    lda trans_b_lo,x
+    lda trans_b_lo, x
     sta data_ptr
-    lda trans_b_hi,x
+    lda trans_b_hi, x
     sta data_ptr+1
-    lda (data_ptr),y
-    and trans_b_mask,x
+    lda (data_ptr), y
+    and trans_b_mask, x
     beq !skip+
-    lda rec_known+FIRST_TRANSMISSION,x
+    lda rec_known+FIRST_TRANSMISSION, x
     bne !skip+
     lda #2
-    sta rec_known+FIRST_TRANSMISSION,x
-!skip:
+    sta rec_known+FIRST_TRANSMISSION, x
+    !skip:
     dex
     bpl !next-
     lda #0
     rts
+}
+
 // Transmissions 15-24. Condition A and condition B (B repeats A when there is
 // only one condition).
-trans_a_lo: .byte <mission_done,<credentials,<(mission_done+1),<(rec_known+3),<firmware,<(mission_done+3),<(rec_known+8),<(rec_known+6),<(rec_known+9),<(rec_known+9)
-trans_a_hi: .byte >mission_done,>credentials,>(mission_done+1),>(rec_known+3),>firmware,>(mission_done+3),>(rec_known+8),>(rec_known+6),>(rec_known+9),>(rec_known+9)
-trans_a_mask: .byte 1,CRED_ORBIT,1,$ff,FW_PULSE,1,$ff,$ff,$ff,$ff
-trans_b_lo: .byte <mission_done,<credentials,<credentials,<(rec_known+3),<firmware,<(mission_done+3),<(rec_known+8),<(rec_known+6),<(rec_known+8),<(rec_known+10)
-trans_b_hi: .byte >mission_done,>credentials,>credentials,>(rec_known+3),>firmware,>(mission_done+3),>(rec_known+8),>(rec_known+6),>(rec_known+8),>(rec_known+10)
-trans_b_mask: .byte 1,CRED_ORBIT,CRED_ZENITH,$ff,FW_PULSE,1,$ff,$ff,$ff,$ff
+trans_a_lo:
+    .byte <mission_done, <credentials, <(mission_done+1), <(rec_known+3), <firmware, <(mission_done+3), <(rec_known+8), <(rec_known+6), <(rec_known+9), <(rec_known+9)
+trans_a_hi:
+    .byte >mission_done, >credentials, >(mission_done+1), >(rec_known+3), >firmware, >(mission_done+3), >(rec_known+8), >(rec_known+6), >(rec_known+9), >(rec_known+9)
+trans_a_mask:
+    .byte 1, CRED_ORBIT, 1, $ff, FW_PULSE, 1, $ff, $ff, $ff, $ff
+trans_b_lo:
+    .byte <mission_done, <credentials, <credentials, <(rec_known+3), <firmware, <(mission_done+3), <(rec_known+8), <(rec_known+6), <(rec_known+8), <(rec_known+10)
+trans_b_hi:
+    .byte >mission_done, >credentials, >credentials, >(rec_known+3), >firmware, >(mission_done+3), >(rec_known+8), >(rec_known+6), >(rec_known+8), >(rec_known+10)
+trans_b_mask:
+    .byte 1, CRED_ORBIT, CRED_ZENITH, $ff, FW_PULSE, 1, $ff, $ff, $ff, $ff
 // Returns X = first record not viewed yet, Z clear when there is one.
 first_unread:
+{
     ldx #1
-!test:
-    lda rec_known,x
+    !test:
+    lda rec_known, x
     cmp #2
     beq !found+
     inx
@@ -300,34 +329,38 @@ first_unread:
     bne !test-
     lda #0
     rts
-!found:
+    !found:
     lda #1
     rts
+}
 
 // Continues an end-of-program or corrected-command pause in the same loop.
 continue_end:
+{
     lda halt_reason
     cmp #HALT_END
     beq !clear+
     cmp #HALT_EDIT
     bne !done+
-!clear:
+    !clear:
     lda #0
     sta halt_reason
     lda program_len
     sta run_lines
-!done:
+    !done:
     rts
+}
 
 // SPACE/RETURN advances pages; RUN/STOP skips the briefing to help.
 // LEFT/RIGHT switches help pages; SPACE/RETURN or H returns to the game.
 // The game state behind the page does not change.
 page_key:
+{
     lda help_open
     cmp #PAGE_ROBOT_DESTROYED
     bne !clockReset+
     jmp dismiss_laser_notice
-!clockReset:
+    !clockReset:
     cmp #PAGE_LOOP_RESET
     bne !shortcuts+
     // Consume the acknowledging key without also editing or starting a run.
@@ -336,20 +369,20 @@ page_key:
     lda #DIRTY_ALL
     sta key_dirty
     jmp reset_loop
-!shortcuts:
+    !shortcuts:
     jsr help_shortcuts
     bcc !normal+
     rts
-!normal:
+    !normal:
     lda help_open
     cmp #PAGE_RECORD
     bne !image+
     jmp record_key
-!image:
+    !image:
     cmp #PAGE_IMAGE
     bne !ending+
     jmp image_key
-!ending:
+    !ending:
     cmp #PAGE_LEGEND
     beq !intro+
     cmp #PAGE_EDITOR
@@ -363,29 +396,29 @@ page_key:
     lda #0
     sta key_dirty
     rts
-!reconnect:
+    !reconnect:
     lda #0
     sta help_open
     lda #DIRTY_ALL
     sta key_dirty
     jmp reset_loop
-!intro:
+    !intro:
     lda key
     cmp #13
     beq !next+
-    cmp #72 // H
+    cmp #72                                                 // H
     beq !close+
     // Either arrow navigates Editor, Commands and Tiles.
     cmp #29
     beq !navigate+
     cmp #157
     bne !stop+
-!navigate:
+    !navigate:
     jsr navigate_help
     bcc !ignore+
     bcs !redraw+
-!stop:
-    cmp #3 // RUN/STOP
+    !stop:
+    cmp #3                                                  // RUN/STOP
     bne !ignore+
     lda help_open
     cmp #PAGE_EDITOR
@@ -393,20 +426,20 @@ page_key:
     lda #PAGE_EDITOR
     sta help_open
     bne !redraw+
-!next:
+    !next:
     lda help_open
     cmp #PAGE_BRIEF1
     bne !brief2+
     lda #PAGE_BRIEF2
     sta help_open
     bne !redraw+
-!brief2:
+    !brief2:
     cmp #PAGE_BRIEF2
     bne !close+
     lda #PAGE_EDITOR
     sta help_open
     bne !redraw+
-!close:
+    !close:
     lda help_open
     cmp #PAGE_LEGEND
     beq !leave+
@@ -414,21 +447,23 @@ page_key:
     beq !leave+
     cmp #PAGE_HELP
     bne !ignore+
-!leave:
+    !leave:
     lda #0
     sta help_open
     sta intro
-!redraw:
+    !redraw:
     lda #DIRTY_ALL
     sta key_dirty
     rts
-!ignore:
+    !ignore:
     lda #0
     sta key_dirty
     rts
+}
 
 // Returns A=1 (Z clear) while a program runs or steps, else A=0.
 in_run:
+{
     lda mode
     cmp #MODE_RUN
     beq !yes+
@@ -436,14 +471,17 @@ in_run:
     beq !yes+
     lda #0
     rts
-!yes:
+    !yes:
     lda #1
     rts
+}
+
 // Record viewer: LEFT/RIGHT browse the mission log (0) and the known records.
 // RETURN shows the next record not viewed yet, then returns to the game.
 // V or RUN/STOP return at once. F1 can resume a running or stepping program;
 // RETURN first shows every queued message, then returns to the same run.
 record_key:
+{
     lda #DIRTY_ALL
     sta key_dirty
     jsr in_run
@@ -451,7 +489,7 @@ record_key:
     lda key
     cmp #133
     beq !close+
-!keys:
+    !keys:
     lda key
     cmp #29
     beq !right+
@@ -463,7 +501,7 @@ record_key:
     beq !close+
     stx view_rec
     rts
-!other:
+    !other:
     cmp #86
     beq !close+
     cmp #3
@@ -478,16 +516,16 @@ record_key:
     lda #0
     sta key_dirty
     rts
-!close:
+    !close:
     lda #0
     sta help_open
     lda halt_reason
     cmp #HALT_CLOCK
     bne !closed+
     jmp show_reset_notice
-!closed:
+    !closed:
     rts
-!act:
+    !act:
     lda #0
     sta help_open
     lda key
@@ -496,39 +534,45 @@ record_key:
     ora #DIRTY_ALL
     sta key_dirty
     rts
-!right:
+    !right:
     ldx view_rec
-!up:
+    !up:
     inx
     cpx #RECORD_COUNT+1
     bcc !known+
     ldx #0
-!known:
+    !known:
     txa
     beq !show+
-    lda rec_known,x
+    lda rec_known, x
     beq !up-
-!show:
+    !show:
     stx view_rec
     rts
-!left:
+    !left:
     ldx view_rec
-!down:
+    !down:
     dex
     bpl !knownLeft+
     ldx #RECORD_COUNT
-!knownLeft:
+    !knownLeft:
     txa
     beq !show-
-    lda rec_known,x
+    lda rec_known, x
     beq !down-
     stx view_rec
     rts
+}
 
 // Only automatic cycle exhaustion calls this; F7/reset_loop bypass it.
 show_reset_notice:
+{
     lda #PAGE_LOOP_RESET
+}
+
+// Open A = reset-page ID and request a complete redraw.
 show_reset_page:
+{
     sta help_open
     lda #DIRTY_ALL
     sta key_dirty
@@ -536,10 +580,12 @@ show_reset_page:
     ora #DIRTY_ALL
     sta dirty
     rts
+}
 
 // Reactor image editor. img_state 0 = edit, 1 = hard error shown,
 // 2 = warning with EXECUTE? YES / NO (default NO).
 image_key:
+{
     lda #DIRTY_ALL
     sta key_dirty
     lda img_state
@@ -551,33 +597,33 @@ image_key:
     lda #0
     sta img_state
     rts
-!confirm:
+    !confirm:
     lda key
     cmp #29
     beq !toggle+
     cmp #157
     beq !toggle+
-    cmp #89 // Y
+    cmp #89                                                 // Y
     beq !yes+
-    cmp #78 // N
+    cmp #78                                                 // N
     beq !no+
     cmp #13
     bne !done+
     lda img_choice
     bne !yes+
-!no:
+    !no:
     lda #0
     sta img_state
-!done:
+    !done:
     rts
-!toggle:
+    !toggle:
     lda img_choice
-    eor #1
+    eor #%00000001
     sta img_choice
     rts
-!yes:
+    !yes:
     jmp authorize_image
-!edit:
+    !edit:
     // Slot and command changes redraw only the slots.
     lda #DIRTY_SLOTS
     sta key_dirty
@@ -595,70 +641,72 @@ image_key:
     beq !clear+
     cmp #13
     beq !check+
-    cmp #75 // K
+    cmp #75                                                 // K
     beq !close+
     cmp #3
     beq !close+
     lda #0
     sta key_dirty
     rts
-!close:
+    !close:
     lda #DIRTY_ALL
     sta key_dirty
     lda #0
     sta help_open
     rts
-!slotUp:
+    !slotUp:
     dex
     bpl !slot+
     ldx #IMAGE_SLOTS-1
-!slot:
+    !slot:
     stx img_slot
     rts
-!slotDown:
+    !slotDown:
     inx
     cpx #IMAGE_SLOTS
     bcc !slot-
     ldx #0
     beq !slot-
-!next:
-    lda image,x
+    !next:
+    lda image, x
     clc
     adc #1
     cmp #RC_SHUTDOWN+1
     bcc !store+
     lda #0
-!store:
-    sta image,x
+    !store:
+    sta image, x
     rts
-!prev:
-    lda image,x
+    !prev:
+    lda image, x
     sec
     sbc #1
     bcs !store-
     lda #RC_SHUTDOWN
     bne !store-
-!clear:
+    !clear:
     lda #0
     beq !store-
-!check:
+    !check:
     lda #DIRTY_ALL
     sta key_dirty
     jsr image_check
     rts
+}
 
 // Firmware check before RUN. Hard errors return to editing. A dangerous or
 // incompatible order asks EXECUTE? with NO selected. A clean image runs.
 image_check:
+{
     ldx #IMAGE_SLOTS-1
     lda #0
     sta img_arg
-!scan:
-    lda image,x
+    !scan:
+    lda image, x
     beq !nextSlot+
     inc img_arg
     tay
-    lda image_needs,y
+    lda image_needs, y
     beq !nextSlot+
     and firmware
     bne !nextSlot+
@@ -667,7 +715,7 @@ image_check:
     sta img_msg
     sta img_state
     rts
-!nextSlot:
+    !nextSlot:
     dex
     bpl !scan-
     lda img_arg
@@ -677,10 +725,10 @@ image_check:
     lda #1
     sta img_state
     rts
-!eval:
+    !eval:
     jsr reactor_eval
     tax
-    lda outcome_warning,x
+    lda outcome_warning, x
     beq authorize_image
     sta img_msg
     lda #0
@@ -688,8 +736,11 @@ image_check:
     lda #2
     sta img_state
     rts
+}
+
 // YES, or no warning: authorize the image and start the robot program.
 authorize_image:
+{
     lda #0
     sta img_state
     sta help_open
@@ -703,27 +754,35 @@ authorize_image:
     lda #0
     sta frame_count
     rts
+}
+
 // Firmware bit each reactor command needs (0 = always available).
-image_needs: .byte 0,FW_FEEDBACK,FW_PULSE,FW_ROUTE,0,0
+image_needs:
+    .byte 0, FW_FEEDBACK, FW_PULSE, FW_ROUTE, 0, 0
 // Warning per outcome: 0 = none, else the warning text index.
-outcome_warning: .byte 0,1,2,3,3,0
+outcome_warning:
+    .byte 0, 1, 2, 3, 3, 0
 
 // A fresh experiment: reset the world and count the loop for the HUD.
 begin_run:
+{
     jsr reset_ephemeral_world
     lda loop_count
     cmp #99
     bcs !counted+
     inc loop_count
-!counted:
+    !counted:
     lda #0
     sta run_msg
     sta delivered_mask
     lda event_seq
     sta seen_event
     rts
+}
 
+// Apply a planning/editing key to the selected robot program line.
 editor_key:
+{
     // Edits change only the program list and the info rows.
     lda #(DIRTY_PROGRAM+DIRTY_INFO)
     sta key_dirty
@@ -734,60 +793,60 @@ editor_key:
     beq !locked+
     dec cursor
     jmp editor_scroll
-!down:
+    !down:
     cmp #17
     bne !plan+
     jmp editor_next
-!plan:
+    !plan:
     lda mode
     beq !map+
     // Paused at the program end: lines that already ran stay unchanged.
     lda cursor
     cmp ip
     bcs !delete+
-!locked:
+    !locked:
     rts
-!map:
+    !map:
     lda key
-    cmp #77 // M: inspect a discovered room without changing world state
+    cmp #77                                                 // M: inspect a discovered room without changing world state
     bne !delete+
     lda #DIRTY_PARTS
     sta key_dirty
     ldx view_room
-!room:
+    !room:
     inx
     cpx #ROOM_COUNT
     bcc !known+
     ldx #0
-!known:
-    lda room_known,x
+    !known:
+    lda room_known, x
     beq !room-
     // Only one room known: say so instead of showing the same map.
     cpx view_room
     bne !view+
     lda #1
     sta map_note
-!view:
+    !view:
     stx view_room
     rts
-!delete:
+    !delete:
     lda key
     cmp #20
     bne !insert+
     jmp editor_delete
-!insert:
-    cmp #73 // I
+    !insert:
+    cmp #73                                                 // I
     beq !doInsert+
     cmp #148
     bne !commit+
-!doInsert:
+    !doInsert:
     jmp editor_insert
-!commit:
+    !commit:
     cmp #13
     bne !arg+
     jsr editor_coalesce
     jmp editor_next
-!arg:
+    !arg:
     ldx cursor
     cpx program_len
     bcs !command+
@@ -806,55 +865,55 @@ editor_key:
     bcs !command+
     sec
     sbc #48
-    sta program_arg,x
-!done:
+    sta program_arg, x
+    !done:
     rts
-!right:
+    !right:
     // A move or WAIT has no direction to turn: RIGHT raises its count.
     jsr arrow_count
     bcs !plus+
-    inc program_dir,x
-    lda program_dir,x
-    and #3
-    sta program_dir,x
+    inc program_dir, x
+    lda program_dir, x
+    and #%00000011
+    sta program_dir, x
     rts
-!left:
+    !left:
     // A move or WAIT: LEFT lowers its count.
     jsr arrow_count
     bcs !minus+
-    dec program_dir,x
-    lda program_dir,x
-    and #3
-    sta program_dir,x
+    dec program_dir, x
+    lda program_dir, x
+    and #%00000011
+    sta program_dir, x
     rts
-!plus:
-    lda program_arg,x
+    !plus:
+    lda program_arg, x
     cmp #15
     bcs !done-
-    inc program_arg,x
+    inc program_arg, x
     rts
-!minus:
-    lda program_arg,x
+    !minus:
+    lda program_arg, x
     cmp #2
     bcc !done-
-    dec program_arg,x
+    dec program_arg, x
     rts
-!command:
+    !command:
     ldx #OP_COUNT-1
-!search:
-    lda command_keys,x
+    !search:
+    lda command_keys, x
     cmp key
     beq !found+
     dex
     bpl !search-
     rts
-!found:
+    !found:
     // BOOST needs PULSE firmware, LINK needs ROUTE.
-    lda command_firmware,x
+    lda command_firmware, x
     beq !free+
     and firmware
     beq !return+
-!free:
+    !free:
     stx scratch
     ldx cursor
     cpx #32
@@ -862,43 +921,56 @@ editor_key:
     cpx program_len
     bcc !set+
     inc program_len
-!set:
+    !set:
     lda scratch
-    sta program_op,x
+    sta program_op, x
     lda #1
-    sta program_arg,x
-    sta program_dir,x
-!return:
+    sta program_arg, x
+    sta program_dir, x
+    !return:
     rts
+}
+
 // X = line. Carry set when LEFT/RIGHT change the count of that line: a move
 // (NORTH, EAST, SOUTH, WEST) or WAIT. Other lines turn their direction.
 arrow_count:
-    lda program_op,x
+{
+    lda program_op, x
     cmp #OP_PICK
     bcc !yes+
     cmp #OP_WAIT
     beq !yes+
     clc
     rts
-!yes:
+    !yes:
     sec
     rts
-command_keys: .byte 78,69,83,87,80,68,84,67,82,65,66,76
-command_firmware: .byte 0,0,0,0,0,0,0,0,0,0,FW_PULSE,FW_ROUTE
+}
 
+command_keys:
+    .byte 78, 69, 83, 87, 80, 68, 84, 67, 82, 65, 66, 76
+command_firmware:
+    .byte 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, FW_PULSE, FW_ROUTE
+
+// Advance the cursor when possible, then keep it inside the visible viewport.
 editor_next:
+{
     lda cursor
     cmp program_len
     bcs editor_scroll
     cmp #31
     bcs editor_scroll
     inc cursor
+}
+
+// Keep the editor cursor within the twelve-row program viewport.
 editor_scroll:
+{
     lda cursor
     cmp scroll_top
     bcs !bottom+
     sta scroll_top
-!bottom:
+    !bottom:
     sec
     sbc scroll_top
     cmp #12
@@ -907,55 +979,65 @@ editor_scroll:
     sec
     sbc #11
     sta scroll_top
-!return:
+    !return:
     rts
+}
 
+// Insert an empty line at the cursor unless the program already has 32 lines.
 editor_insert:
+{
     lda program_len
     cmp #32
     bcs !return+
     tax
-!shift:
+    !shift:
     cpx cursor
     beq !insert+
-    lda program_op-1,x
-    sta program_op,x
-    lda program_arg-1,x
-    sta program_arg,x
-    lda program_dir-1,x
-    sta program_dir,x
+    lda program_op-1, x
+    sta program_op, x
+    lda program_arg-1, x
+    sta program_arg, x
+    lda program_dir-1, x
+    sta program_dir, x
     dex
     jmp !shift-
-!insert:
+    !insert:
     lda #OP_EMPTY
-    sta program_op,x
+    sta program_op, x
     lda #1
-    sta program_arg,x
-    sta program_dir,x
+    sta program_arg, x
+    sta program_dir, x
     inc program_len
-!return:
+    !return:
     rts
+}
+
+// Delete the cursor line and shift following program fields together.
 editor_delete:
+{
     ldx cursor
     cpx program_len
     bcs !return+
     dec program_len
-!shift:
+    !shift:
     cpx program_len
     bcs !return+
-    lda program_op+1,x
-    sta program_op,x
-    lda program_arg+1,x
-    sta program_arg,x
-    lda program_dir+1,x
-    sta program_dir,x
+    lda program_op+1, x
+    sta program_op, x
+    lda program_arg+1, x
+    sta program_arg, x
+    lda program_dir+1, x
+    sta program_dir, x
     inx
     jmp !shift-
-!return:
+    !return:
     rts
+}
+
 // Commit merges the selected MOVE with the preceding MOVE when possible.
 // Cursor navigation alone deliberately preserves a split for debugging.
 editor_coalesce:
+{
     ldx cursor
     beq !return+
     lda mode
@@ -963,21 +1045,22 @@ editor_coalesce:
     // At the program end pause, never merge into a line that already ran.
     cpx ip
     beq !return+
-!plan:
+    !plan:
     cpx program_len
     bcs !return+
-    lda program_op,x
+    lda program_op, x
     cmp #4
     bcs !return+
-    cmp program_op-1,x
+    cmp program_op-1, x
     bne !return+
-    lda program_arg,x
+    lda program_arg, x
     clc
-    adc program_arg-1,x
+    adc program_arg-1, x
     cmp #10
     bcs !return+
-    sta program_arg-1,x
+    sta program_arg-1, x
     jsr editor_delete
     dec cursor
-!return:
+    !return:
     rts
+}

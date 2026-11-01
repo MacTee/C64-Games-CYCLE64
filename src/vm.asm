@@ -1,11 +1,14 @@
+// CYCLE 64 - Cycle-counted robot command execution with retryable action failures.
+
 // One logical cycle per call; empty lines and program end cost none.
 // Sample elapsed, resolve action, increment cycle. Delivery records elapsed+1.
 // HALT_END is not final: the UI clears it to continue with lines added later.
 vm_tick:
+{
     lda halt_reason
     beq !ready+
     rts
-!ready:
+    !ready:
     // A zero-cycle halt must not repeat the previous cycle's delivery event.
     lda #0
     sta delivery_event
@@ -17,8 +20,8 @@ vm_tick:
     lda #HALT_END
     sta halt_reason
     rts
-!load:
-    lda program_op,x
+    !load:
+    lda program_op, x
     cmp #OP_EMPTY
     bne !command+
     inc ip
@@ -28,18 +31,18 @@ vm_tick:
     lda #HALT_END
     sta halt_reason
     rts
-!command:
+    !command:
     sta active_op
-    lda program_arg,x
+    lda program_arg, x
     sta active_arg
-    lda program_dir,x
+    lda program_dir, x
     sta active_dir
     lda #0
     sta substep
     lda active_op
     jsr op_cost
     sta cycles_left
-!execute:
+    !execute:
     lda #0
     sta action_error
     sta delivery_event
@@ -62,37 +65,37 @@ vm_tick:
     cmp #OP_LINK
     beq !link+
     jmp !consume+
-!move:
+    !move:
     jsr world_move_dir
     jmp !consume+
-!pick:
+    !pick:
     jsr world_pick
     jmp !consume+
-!drop:
+    !drop:
     jsr world_drop
     jmp !consume+
-!scan:
+    !scan:
     lda cycles_left
     cmp #1
     bne !consume+
     jsr reveal_scan
     jmp !consume+
-!read:
+    !read:
     lda cycles_left
     cmp #1
     bne !consume+
     jsr world_read
     jmp !consume+
-!access:
+    !access:
     jsr world_access
     jmp !consume+
-!link:
+    !link:
     lda cycles_left
     cmp #1
     bne !consume+
     jsr world_link
     jmp !consume+
-!boost:
+    !boost:
     // Two tiles per cycle. substep counts tiles, and each tile is checked.
     lda active_dir
     jsr world_move_dir
@@ -107,11 +110,11 @@ vm_tick:
     inc substep
     lda active_dir
     jsr world_move_dir
-!consume:
+    !consume:
     lda action_error
     bne !counted+
     jsr laser_check
-!counted:
+    !counted:
     inc elapsed
     dec cycles_left
     lda elapsed
@@ -121,22 +124,25 @@ vm_tick:
     beq !clock+
     sta halt_reason
     rts
-!clock:
+    !clock:
     lda cycles_left
     bne !return+
     inc ip
     rts
-!expired:
+    !expired:
     // A failure in the last cycle still names its cause.
     lda action_error
     bne !failed+
     lda #HALT_CLOCK
-!failed:
+    !failed:
     sta halt_reason
-!return:
+    !return:
     rts
+}
+
 // A=opcode, active_arg loaded. Returns A=cycle cost.
 op_cost:
+{
     cmp #OP_SCAN
     beq !two+
     cmp #OP_LINK
@@ -151,15 +157,16 @@ op_cost:
     beq !count+
     lda #1
     rts
-!two:
+    !two:
     lda #2
     rts
-!boost:
+    !boost:
     lda active_arg
     clc
     adc #1
     lsr
     rts
-!count:
+    !count:
     lda active_arg
     rts
+}
